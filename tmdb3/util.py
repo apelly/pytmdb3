@@ -7,14 +7,15 @@
 #-----------------------
 
 from copy import copy
-from locales import get_locale
-from tmdb_auth import get_session
+from .locales import get_locale
+from .tmdb_auth import get_session
+import collections
 
 
 class NameRepr(object):
     """Mixin for __repr__ methods using 'name' attribute."""
     def __repr__(self):
-        return u"<{0.__class__.__name__} '{0.name}'>"\
+        return "<{0.__class__.__name__} '{0.name}'>"\
                     .format(self).encode('utf-8')
 
 
@@ -25,7 +26,7 @@ class SearchRepr(object):
     """
     def __repr__(self):
         name = self._name if self._name else self._request._kwargs['query']
-        return u"<Search Results: {0}>".format(name).encode('utf-8')
+        return "<Search Results: {0}>".format(name).encode('utf-8')
 
 
 class Poller(object):
@@ -60,7 +61,7 @@ class Poller(object):
 
     def __call__(self):
         # retrieve data from callable function, and apply
-        if not callable(self.func):
+        if not isinstance(self.func, collections.Callable):
             raise RuntimeError('Poller object called without a source function')
         req = self.func()
         if ('language' in req._kwargs) or ('country' in req._kwargs) \
@@ -82,9 +83,9 @@ class Poller(object):
     def apply(self, data, set_nones=True):
         # apply data directly, bypassing callable function
         unfilled = False
-        for k, v in self.lookup.items():
+        for k, v in list(self.lookup.items()):
             if (k in data) and \
-                    ((data[k] is not None) if callable(self.func) else True):
+                    ((data[k] is not None) if isinstance(self.func, collections.Callable) else True):
                 # argument received data, populate it
                 setattr(self.inst, v, data[k])
             elif v in self.inst._data:
@@ -110,7 +111,7 @@ class Data(object):
     This maps to a single key in a JSON dictionary received from the API
     """
     def __init__(self, field, initarg=None, handler=None, poller=None,
-                 raw=True, default=u'', lang=None, passthrough={}):
+                 raw=True, default='', lang=False):
         """
         This defines how the dictionary value is to be processed by the
         poller
@@ -142,7 +143,6 @@ class Data(object):
         self.raw = raw
         self.default = default
         self.sethandler(handler)
-        self.passthrough = passthrough
 
     def __get__(self, inst, owner):
         if inst is None:
@@ -161,9 +161,6 @@ class Data(object):
         if isinstance(value, Element):
             value._locale = inst._locale
             value._session = inst._session
-
-            for source, dest in self.passthrough:
-                setattr(value, dest, getattr(inst, source))
         inst._data[self.field] = value
 
     def sethandler(self, handler):
@@ -185,7 +182,7 @@ class Datalist(Data):
     Response definition class for list data
     This maps to a key in a JSON dictionary storing a list of data
     """
-    def __init__(self, field, handler=None, poller=None, sort=None, raw=True, passthrough={}):
+    def __init__(self, field, handler=None, poller=None, sort=None, raw=True):
         """
         This defines how the dictionary value is to be processed by the
         poller
@@ -210,7 +207,7 @@ class Datalist(Data):
                        force the data to instead be passed in as the first
                        argument
         """
-        super(Datalist, self).__init__(field, None, handler, poller, raw, passthrough=passthrough)
+        super(Datalist, self).__init__(field, None, handler, poller, raw)
         self.sort = sort
 
     def __set__(self, inst, value):
@@ -221,10 +218,6 @@ class Datalist(Data):
                 if isinstance(val, Element):
                     val._locale = inst._locale
                     val._session = inst._session
-
-                    for source, dest in self.passthrough.items():
-                        setattr(val, dest, getattr(inst, source))
-
                 data.append(val)
             if self.sort:
                 if self.sort is True:
@@ -240,7 +233,7 @@ class Datadict(Data):
     This maps to a key in a JSON dictionary storing a dictionary of data
     """
     def __init__(self, field, handler=None, poller=None, raw=True,
-                       key=None, attr=None, passthrough={}):
+                       key=None, attr=None):
         """
         This defines how the dictionary value is to be processed by the
         poller
@@ -270,7 +263,7 @@ class Datadict(Data):
         """
         if key and attr:
             raise TypeError("`key` and `attr` cannot both be defined")
-        super(Datadict, self).__init__(field, None, handler, poller, raw, passthrough=passthrough)
+        super(Datadict, self).__init__(field, None, handler, poller, raw)
         if key:
             self.getkey = lambda x: x[key]
         elif attr:
@@ -287,10 +280,6 @@ class Datadict(Data):
                 if isinstance(val, Element):
                     val._locale = inst._locale
                     val._session = inst._session
-
-                    for source, dest in self.passthrough.items():
-                        setattr(val, dest, getattr(inst, source))
-
                 data[self.getkey(val)] = val
         inst._data[self.field] = data
 
@@ -310,7 +299,7 @@ class ElementType( type ):
 
         for base in reversed(bases):
             if isinstance(base, mcs):
-                for k, attr in base.__dict__.items():
+                for k, attr in list(base.__dict__.items()):
                     if isinstance(attr, Data):
                         # extract copies of each defined Data element from
                         # parent classes
@@ -321,7 +310,7 @@ class ElementType( type ):
                         # extract copies of each defined Poller function
                         # from parent classes
                         pollers[k] = attr.func
-        for k, attr in attrs.items():
+        for k, attr in list(attrs.items()):
             if isinstance(attr, Data):
                 data[k] = attr
         if '_populate' in attrs:
@@ -332,7 +321,7 @@ class ElementType( type ):
         # which Data points
         pollermap = dict([(k, []) for k in pollers])
         initargs = []
-        for k, v in data.items():
+        for k, v in list(data.items()):
             v.name = k
             if v.initarg:
                 initargs.append(v)
@@ -348,7 +337,7 @@ class ElementType( type ):
 
         # wrap each used poller function with a Poller class, and push into
         # the new class attributes
-        for k, v in pollermap.items():
+        for k, v in list(pollermap.items()):
             if len(v) == 0:
                 continue
             lookup = dict([(attr.field, attr.name) for attr in v])
@@ -398,6 +387,5 @@ class ElementType( type ):
         return obj
 
 
-class Element( object ):
-    __metaclass__ = ElementType
+class Element( object, metaclass=ElementType ):
     _lang = 'en'

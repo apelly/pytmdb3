@@ -10,11 +10,12 @@
 import time
 import os
 
-from tmdb_exceptions import *
-from cache_engine import Engines
+from .tmdb_exceptions import *
+from .cache_engine import Engines
 
-import cache_null
-import cache_file
+from . import cache_null
+from . import cache_file
+import collections
 
 
 class Cache(object):
@@ -44,7 +45,7 @@ class Cache(object):
                 self._age = max(self._age, obj.creation)
 
     def _expire(self):
-        for k, v in self._data.items():
+        for k, v in list(self._data.items()):
             if v.expired:
                 del self._data[k]
 
@@ -104,7 +105,7 @@ class Cache(object):
                     raise TMDBCacheError(
                         'Cache.Cached decorator called before being given ' +
                         'a function to wrap.')
-                elif not callable(args[0]):
+                elif not isinstance(args[0], collections.Callable):
                     raise TMDBCacheError(
                         'Cache.Cached must be provided a callable object.')
                 return self.__class__(self.cache, self.callback, args[0])

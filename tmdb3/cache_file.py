@@ -16,10 +16,11 @@ import time
 import os
 import io
 
-from cStringIO import StringIO
+from io import StringIO
 
-from tmdb_exceptions import *
-from cache_engine import CacheEngine, CacheObject
+from .tmdb_exceptions import *
+from .cache_engine import CacheEngine, CacheObject
+import collections
 
 ####################
 # Cache File Format
@@ -76,7 +77,7 @@ try:
 
         def __exit__(self, exc_type, exc_value, exc_tb):
             suppress = False
-            if callable(self.callback):
+            if isinstance(self.callback, collections.Callable):
                 suppress = self.callback(exc_type, exc_value, exc_tb)
             fcntl.flock(self.fileobj, fcntl.LOCK_UN)
             return suppress
@@ -111,7 +112,7 @@ except ImportError:
 
         def __exit__(self, exc_type, exc_value, exc_tb):
             suppress = False
-            if callable(self.callback):
+            if isinstance(self.callback, collections.Callable):
                 suppress = self.callback(exc_type, exc_value, exc_tb)
             msvcrt.locking(self.fileobj.fileno(), msvcrt.LK_UNLCK, self.size)
             return suppress
@@ -123,7 +124,7 @@ except ImportError:
         if filename.startswith('~'):
             # check for home directory
             return os.path.expanduser(filename)
-        elif (ord(filename[0]) in (range(65, 91) + range(99, 123))) \
+        elif (ord(filename[0]) in (list(range(65, 91)) + list(range(99, 123)))) \
                 and (filename[1:3] == ':\\'):
             # check for absolute drive path (e.g. C:\...)
             return filename
@@ -195,7 +196,10 @@ class FileCacheObject(CacheObject):
     def load(self, fd):
         fd.seek(self.position)
         self._buff.seek(0)
-        self._buff.write(fd.read(self.size))
+        # ajp 16-10-14 >>>
+        # self._buff.write(fd.read(self.size))
+        self._buff.write(fd.read(self.size).decode('utf-8'))
+        # ajp 16-10-14 <<<
 
     def dumpslot(self, fd):
         pos = fd.tell()
@@ -204,7 +208,10 @@ class FileCacheObject(CacheObject):
     def dumpdata(self, fd):
         self.size
         fd.seek(self.position)
-        fd.write(self._buff.getvalue())
+        # ajp 16-10-14 >>>
+        #fd.write(self._buff.getvalue())
+        fd.write(self._buff.getvalue().encode('utf-8'))
+        # ajp 16-10-14 <<<
 
 
 class FileEngine( CacheEngine ):
@@ -256,7 +263,7 @@ class FileEngine( CacheEngine ):
                     else:
                         # let the unhandled error continue through
                         raise
-            elif e.errno == errno.EACCES:
+            elif e.errno == errno.EACCESS:
                 # file exists, but we do not have permission to access it
                 raise TMDBCacheReadError(self.cachefile)
             else:
@@ -371,7 +378,7 @@ class FileEngine( CacheEngine ):
         else:
             # rewrite cache file from scratch
             # pull data from parent cache
-            data.extend(self.parent()._data.values())
+            data.extend(list(self.parent()._data.values()))
             data.sort(key=lambda x: x.creation)
             # write header
             size = len(data) + self.preallocate

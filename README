@@ -1,3 +1,8 @@
+## Warning!
+This has been ported to Python 3 and appears to be working. I will make an effort to support it, but no guarantees.
+
+Thanks to Raymond Wagner for writing the original.
+
 ## PyTMDB3
 
 This Python module implements the v3 API for TheMovieDb.org, allowing access
